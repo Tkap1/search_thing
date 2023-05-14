@@ -34,3 +34,4 @@
 build/*
 .tags
 remedy.rdbg
+compiler_output.txt
