@@ -105,4 +105,7 @@ global constexpr char* c_extension_whitelist[] = {
 	".py",
 	".ahk",
 	".bat",
+	".enums",
+	".funcs",
+	".globals",
 };

@@ -362,7 +362,8 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 			static_assert(MAX_PATH >= sizeof(file_name_str.data));
 			strcpy(file_name_before_edit, file_name_str.data);
 			strcpy(file_path_before_edit, file_path_str.data);
-			e_string_input_result string_input_result = zero;
+			e_string_input_result file_name_input_result = zero;
+			e_string_input_result file_path_input_result = zero;
 
 			if(is_key_pressed(key_tab))
 			{
@@ -380,18 +381,18 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 			{
 				case e_search_type_file_name:
 				{
-					string_input_result = handle_string_input(&file_name_str);
+					file_name_input_result = handle_string_input(&file_name_str);
 				} break;
 
 				case e_search_type_file_path:
 				{
-					handle_string_input(&file_path_str);
+					file_path_input_result = handle_string_input(&file_path_str);
 				} break;
 			}
 			b8 file_name_search_changed = strcmp(file_name_before_edit, file_name_str.data) != 0;
 			b8 file_path_search_changed = strcmp(file_path_before_edit, file_path_str.data) != 0;
 
-			if(string_input_result == e_string_input_result_cancel)
+			if(file_name_input_result == e_string_input_result_cancel)
 			{
 				hide_window();
 			}
@@ -482,7 +483,10 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 					if(fws_i == selected)
 					{
 						color = brighter(rgb(0xF49D51), 1.2f);
-						if(string_input_result == e_string_input_result_submit)
+						if(
+							file_name_input_result == e_string_input_result_submit ||
+							file_path_input_result == e_string_input_result_submit
+						)
 						{
 							hide_window();
 							s_thread thread;
