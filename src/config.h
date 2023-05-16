@@ -108,6 +108,9 @@ global constexpr char* c_extension_whitelist[] = {
 	".enums",
 	".funcs",
 	".globals",
+	".fragment",
+	".vertex",
+	".geometry",
 };
 
 global constexpr char* vscode_path = "C:/Program Files/Microsoft VS Code/Code.exe";

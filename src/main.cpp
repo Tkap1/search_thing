@@ -1,4 +1,3 @@
-
 #include "tklib.h"
 
 #pragma warning(push, 0)
@@ -125,7 +124,7 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 	char* class_name = "search_thing";
 	g_arena.init(100 * c_mb);
 
-	g_frame_arena.capacity = 10 * c_mb;
+	g_frame_arena.capacity = 25 * c_mb;
 	g_frame_arena.memory = (u8*)g_arena.get(g_frame_arena.capacity);
 
 	PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = null;
@@ -263,9 +262,9 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 
 	RegisterHotKey(g_window, 1, 0, key_f6);
 
-	g_font_arr[e_font_small] = load_font("assets/consola.ttf", 24, &g_arena);
-	g_font_arr[e_font_medium] = load_font("assets/consola.ttf", 36, &g_arena);
-	g_font_arr[e_font_big] = load_font("assets/consola.ttf", 72, &g_arena);
+	g_font_arr[e_font_small] = load_font("assets/consola.ttf", 24, &g_frame_arena);
+	g_font_arr[e_font_medium] = load_font("assets/consola.ttf", 36, &g_frame_arena);
+	g_font_arr[e_font_big] = load_font("assets/consola.ttf", 72, &g_frame_arena);
 
 	u32 vao;
 	u32 ssbo;
@@ -274,10 +273,10 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 		u32 vertex = glCreateShader(GL_VERTEX_SHADER);
 		u32 fragment = glCreateShader(GL_FRAGMENT_SHADER);
 		char* header = "#version 430 core\n";
-		char* vertex_src = read_file_quick("shaders/vertex.vertex", &g_arena);
-		char* fragment_src = read_file_quick("shaders/fragment.fragment", &g_arena);
-		char* vertex_src_arr[] = {header, read_file_quick("src/shader_shared.h", &g_arena), vertex_src};
-		char* fragment_src_arr[] = {header, read_file_quick("src/shader_shared.h", &g_arena), fragment_src};
+		char* vertex_src = read_file_quick("shaders/vertex.vertex", &g_frame_arena);
+		char* fragment_src = read_file_quick("shaders/fragment.fragment", &g_frame_arena);
+		char* vertex_src_arr[] = {header, read_file_quick("src/shader_shared.h", &g_frame_arena), vertex_src};
+		char* fragment_src_arr[] = {header, read_file_quick("src/shader_shared.h", &g_frame_arena), fragment_src};
 		glShaderSource(vertex, array_count(vertex_src_arr), vertex_src_arr, null);
 		glShaderSource(fragment, array_count(fragment_src_arr), fragment_src_arr, null);
 		glCompileShader(vertex);
@@ -326,6 +325,8 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 
 	MSG win_msg = zero;
 	b8 running = true;
+
+	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		frame start start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	while(running)
 	{
 		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		window messages start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
@@ -407,6 +408,11 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 				file_name_search_changed = true;
 			}
 
+			if(file_content_search_changed)
+			{
+				file_name_search_changed = true;
+			}
+
 			if(file_name_search_changed)
 			{
 				selected = 0;
@@ -428,6 +434,24 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 								fws.score = string_similarity(file_name_str.data, file.name.cstr());
 								if(fws.score <= 0) { continue; }
 							}
+
+							if(file_content_str.len > 0)
+							{
+								g_frame_arena.push();
+								char* data = read_file_quick(file.full_path.data, &g_frame_arena);
+								int data_len = (int)strlen(data);
+								if(data)
+								{
+									int index = str_find_from_left_fast(data, data_len, file_content_str.data, file_content_str.len);
+									if(index == -1)
+									{
+										g_frame_arena.pop();
+										continue;
+									}
+								}
+								g_frame_arena.pop();
+							}
+
 							sorted_files.add(fws);
 						}
 					}
@@ -457,13 +481,16 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 
 			search_pos.x += 4;
 
-			if(is_key_pressed(key_down))
+			if(sorted_files.count)
 			{
-				selected = circular_index(selected + 1, sorted_files.count);
-			}
-			if(is_key_pressed(key_up))
-			{
-				selected = circular_index(selected - 1, sorted_files.count);
+				if(is_key_pressed(key_down))
+				{
+					selected = circular_index(selected + 1, sorted_files.count);
+				}
+				if(is_key_pressed(key_up))
+				{
+					selected = circular_index(selected - 1, sorted_files.count);
+				}
 			}
 
 			float bottom_of_selected = panel_top + selected * font_size + font_size * 3;
@@ -491,7 +518,8 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 						color = brighter(rgb(0xF49D51), 1.2f);
 						if(
 							file_name_input_result == e_string_input_result_submit ||
-							file_path_input_result == e_string_input_result_submit
+							file_path_input_result == e_string_input_result_submit ||
+							file_content_input_result == e_string_input_result_submit
 						)
 						{
 							hide_window();
@@ -575,6 +603,7 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 		delta = 0.01f;
 		total_time += delta;
 	}
+	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		frame start end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 	return 0;
 }
@@ -645,7 +674,6 @@ LRESULT window_proc(HWND window, UINT msg, WPARAM wparam, LPARAM lparam)
 			b8 is_down = !(bool)((HIWORD(lparam) >> 15) & 1);
 			if(key < c_max_keys)
 			{
-
 				s_stored_input si = zero;
 				si.key = key;
 				si.is_down = is_down;
