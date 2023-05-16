@@ -1,4 +1,11 @@
 
+enum e_func
+{
+	e_func_get_all_files_in_directory,
+	e_func_sort_and_filter_files,
+	e_func_count,
+};
+
 enum e_search_type
 {
 	e_search_type_file_name,
@@ -81,6 +88,45 @@ struct s_char_event
 	int c;
 };
 
+template <typename T>
+struct s_dynamic_array
+{
+	int count;
+	int capacity;
+	T* elements;
+
+	void add(T new_element)
+	{
+		if(capacity == 0)
+		{
+			capacity = 64;
+			elements = (T*)malloc(sizeof(T) * capacity);
+		}
+		else if(count >= capacity)
+		{
+			capacity *= 2;
+			elements = (T*)realloc(elements, sizeof(T) * capacity);
+		}
+		elements[count++] = new_element;
+	}
+
+	void free()
+	{
+		assert(capacity > 0);
+		::free(elements);
+		capacity = 0;
+		count = 0;
+		elements = null;
+	}
+
+	T& operator[](int index)
+	{
+		assert(index >= 0);
+		assert(index < count);
+		return elements[index];
+	}
+};
+
 #ifdef m_debug
 func f64 get_ms();
 #define m_timed_block(name_) s_auto_timer timer___ = zero; timer___.name = name_; timer___.start = get_ms()
@@ -122,48 +168,12 @@ func void show_window();
 func void hide_window();
 func u64 get_cycles();
 func WPARAM remap_key_if_necessary(WPARAM vk, LPARAM lparam);
-
-template <typename T>
-struct s_dynamic_array
-{
-	int count;
-	int capacity;
-	T* elements;
-
-	void add(T new_element)
-	{
-		if(capacity == 0)
-		{
-			capacity = 64;
-			elements = (T*)malloc(sizeof(T) * capacity);
-		}
-		else if(count >= capacity)
-		{
-			capacity *= 2;
-			elements = (T*)realloc(elements, sizeof(T) * capacity);
-		}
-		elements[count++] = new_element;
-	}
-
-	void free()
-	{
-		assert(capacity > 0);
-		::free(elements);
-		capacity = 0;
-		count = 0;
-		elements = null;
-	}
-
-	T& operator[](int index)
-	{
-		assert(index >= 0);
-		assert(index < count);
-		return elements[index];
-	}
-};
+DWORD handle_work_queue(void* param);
+func void add_func_to_queue(e_func id);
+func void sort_and_filter_files(s_dynamic_array<s_file_with_score>* in);
 
 
-func void get_all_files_in_directory_(s_dynamic_array<s_file_info>* dynamic_arr, char* directory_path, s_lin_arena* arena)
+func void get_all_files_in_directory_(s_dynamic_array<s_file_info>* dynamic_arr, char* directory_path)
 {
 	WIN32_FIND_DATAA find_data = zero;
 	s_str_sbuilder<MAX_PATH> path_with_star;
@@ -190,7 +200,7 @@ func void get_all_files_in_directory_(s_dynamic_array<s_file_info>* dynamic_arr,
 		{
 			s_str_sbuilder<1024> builder;
 			builder.add("%s/%s", directory_path, find_data.cFileName);
-			get_all_files_in_directory_(dynamic_arr, builder.cstr(), arena);
+			get_all_files_in_directory_(dynamic_arr, builder.cstr());
 		}
 		else
 		{
@@ -229,10 +239,10 @@ func void get_all_files_in_directory_(s_dynamic_array<s_file_info>* dynamic_arr,
 	FindClose(first);
 }
 
-func s_dynamic_array<s_file_info> get_all_files_in_directory(char* directory_path, s_lin_arena* arena)
+func s_dynamic_array<s_file_info> get_all_files_in_directory(char* directory_path)
 {
 	s_dynamic_array<s_file_info> result = zero;
-	get_all_files_in_directory_(&result, directory_path, arena);
+	get_all_files_in_directory_(&result, directory_path);
 	return result;
 }
 

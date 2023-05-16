@@ -76,6 +76,7 @@ global s_str<1024> thread_str;
 global s_sarray<s_str<600>, 4> messages;
 global s_lin_arena g_arena = zero;
 global s_lin_arena g_frame_arena = zero;
+global s_lin_arena g_thread_frame_arena = zero;
 
 global s_ui ui;
 global s_sarray<s_char_event, 64> char_event_arr;
@@ -84,6 +85,21 @@ global HWND g_window;
 global b8 g_window_shown = false;
 
 global u64 cycle_frequency;
+
+global s_input_str<MAX_PATH - 1> file_path_str;
+global s_input_str<MAX_PATH - 1> file_name_str;
+global s_input_str<MAX_PATH - 1> file_content_str;
+
+global volatile int queue_count = 0;
+global volatile e_func queue[128];
+
+global s_dynamic_array<s_file_info> files;
+global s_dynamic_array<s_file_with_score> sorted_files;
+global s_dynamic_array<s_file_with_score> thread_land_sorted_files;
+global b8 thread_sorted_files;
+
+global s_mutex mutex;
+global s_mutex queue_mutex;
 
 #include "ui.cpp"
 #include "draw.cpp"
@@ -107,6 +123,9 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 	unreferenced(cmdshow);
 	#endif
 
+	mutex = make_mutex();
+	queue_mutex = make_mutex();
+
 	{
 		LARGE_INTEGER temp;
 		QueryPerformanceFrequency(&temp);
@@ -126,6 +145,9 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 
 	g_frame_arena.capacity = 25 * c_mb;
 	g_frame_arena.memory = (u8*)g_arena.get(g_frame_arena.capacity);
+
+	g_thread_frame_arena.capacity = 25 * c_mb;
+	g_thread_frame_arena.memory = (u8*)g_arena.get(g_thread_frame_arena.capacity);
 
 	PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = null;
 	PFNWGLCHOOSEPIXELFORMATARBPROC wglChoosePixelFormatARB = null;
@@ -302,14 +324,18 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 	string_similarity("cfg.y", "config.py");
 	string_similarity("cfg.y", "config.h");
 
-	auto file_name_str = make_input_str<MAX_PATH - 1>();
-	auto file_path_str = make_input_str<MAX_PATH - 1>();
-	auto file_content_str = make_input_str<MAX_PATH - 1>();
+	file_name_str = make_input_str<MAX_PATH - 1>();
+	file_path_str = make_input_str<MAX_PATH - 1>();
+	file_content_str = make_input_str<MAX_PATH - 1>();
 	file_path_str.from_cstr("C:/Users/34687/Desktop/Dev");
 	int selected = 0;
 
-	auto files = get_all_files_in_directory(file_path_str.data, &g_arena);
-	s_dynamic_array<s_file_with_score> sorted_files = zero;
+	{
+		s_thread thread = zero;
+		thread.init(handle_work_queue);
+	}
+
+	files = get_all_files_in_directory(file_path_str.data);
 
 	for(int file_i = 0; file_i < files.count; file_i++)
 	{
@@ -403,8 +429,10 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 
 			if(file_path_search_changed)
 			{
-				m_timed_block("Get all files");
-				files = get_all_files_in_directory(file_path_str.data, &g_arena);
+				// m_timed_block("Get all files");
+				printf("get all\n");
+				add_func_to_queue(e_func_get_all_files_in_directory);
+				// files = get_all_files_in_directory(file_path_str.data);
 				file_name_search_changed = true;
 			}
 
@@ -416,51 +444,8 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 			if(file_name_search_changed)
 			{
 				selected = 0;
-				if(sorted_files.elements)
-				{
-					m_timed_block("Free sorted files");
-					sorted_files.free();
-				}
-				if(files.elements)
-				{
-					{
-						m_timed_block("Calculate file score");
-						foreach_raw(file_i, file, files)
-						{
-							s_file_with_score fws = zero;
-							fws.info = file;
-							if(file_name_str.len > 0)
-							{
-								fws.score = string_similarity(file_name_str.data, file.name.cstr());
-								if(fws.score <= 0) { continue; }
-							}
-
-							if(file_content_str.len > 0)
-							{
-								g_frame_arena.push();
-								char* data = read_file_quick(file.full_path.data, &g_frame_arena);
-								int data_len = (int)strlen(data);
-								if(data)
-								{
-									int index = str_find_from_left_fast(data, data_len, file_content_str.data, file_content_str.len);
-									if(index == -1)
-									{
-										g_frame_arena.pop();
-										continue;
-									}
-								}
-								g_frame_arena.pop();
-							}
-
-							sorted_files.add(fws);
-						}
-					}
-
-					{
-						m_timed_block("Sort files");
-						qsort(sorted_files.elements, sorted_files.count, sizeof(*sorted_files.elements), qsort_files);
-					}
-				}
+				printf("sort\n");
+				add_func_to_queue(e_func_sort_and_filter_files);
 			}
 
 			float font_size = g_font_arr[font_type].size;
@@ -543,6 +528,19 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 						{.do_clip = true, .clip_pos = pos - size / 2 + v2(0.0f, font_size * 3), .clip_size = size - v2(0.0f, font_size * 3)}
 					);
 				}
+			}
+
+			if(thread_sorted_files)
+			{
+				// @Note(tkap, 16/05/2023): BAD
+				mutex.lock();
+				int copy_size = sizeof(*sorted_files.elements) * thread_land_sorted_files.capacity;
+				sorted_files.elements = (s_file_with_score*)malloc(copy_size);
+				memcpy(sorted_files.elements, thread_land_sorted_files.elements, copy_size);
+				sorted_files.capacity = thread_land_sorted_files.capacity;
+				sorted_files.count = thread_land_sorted_files.count;
+				thread_sorted_files = false;
+				mutex.unlock();
 			}
 		}
 
@@ -1070,4 +1068,120 @@ func WPARAM remap_key_if_necessary(WPARAM vk, LPARAM lparam)
 	}
 
 	return new_vk;
+}
+
+DWORD handle_work_queue(void* param)
+{
+	unreferenced(param);
+	while(true)
+	{
+		int count = queue_count;
+		if(count > 0)
+		{
+			e_func id = queue[0];
+			int original = InterlockedCompareExchange((volatile long*)&queue_count, count - 1, count);
+			if(count == original)
+			{
+				// @Note(tkap, 16/05/2023): Not thread safe!!!
+				queue_mutex.lock();
+				memcpy((void*)&queue[0], (void*)&queue[1], sizeof(queue[0]) * (original - 1));
+				queue_mutex.unlock();
+				switch(id)
+				{
+					case e_func_get_all_files_in_directory:
+					{
+						printf("getting all files!\n");
+						if(files.elements)
+						{
+							files.free();
+						}
+						files = get_all_files_in_directory(file_path_str.data);
+					} break;
+
+					case e_func_sort_and_filter_files:
+					{
+						mutex.lock();
+						thread_sorted_files = false;
+						printf("sorting BAAAAAT!\n");
+						sort_and_filter_files(&thread_land_sorted_files);
+						thread_sorted_files = true;
+						mutex.unlock();
+					} break;
+
+					invalid_default_case;
+				}
+			}
+		}
+		// printf("ATHANO!\n");
+		// files = get_all_files_in_directory(file_path_str.data);
+		g_thread_frame_arena.used = 0;
+		Sleep(1);
+	}
+}
+
+func void add_func_to_queue(e_func id)
+{
+	int count = queue_count;
+	int original = InterlockedCompareExchange((volatile long*)&queue_count, count + 1, count);
+	assert(original < array_count(queue));
+
+	// @Note(tkap, 16/05/2023): Not thread safe!!!
+	if(original == count)
+	{
+		queue_mutex.lock();
+		queue[original] = id;
+		queue_mutex.unlock();
+	}
+}
+
+func void sort_and_filter_files(s_dynamic_array<s_file_with_score>* in)
+{
+	if(in->elements)
+	{
+		// m_timed_block("Free sorted files");
+		in->free();
+	}
+
+	if(files.elements)
+	{
+		assert(files.capacity > 0);
+		assert(files.count > 0);
+		assert(files.capacity >= files.count);
+		{
+			// m_timed_block("Calculate file score");
+			foreach_raw(file_i, file, files)
+			{
+				s_file_with_score fws = zero;
+				fws.info = file;
+				if(file_name_str.len > 0)
+				{
+					fws.score = string_similarity(file_name_str.data, file.name.cstr());
+					if(fws.score <= 0) { continue; }
+				}
+
+				if(file_content_str.len > 0)
+				{
+					g_thread_frame_arena.push();
+					s_read_file_result data = read_file(file.full_path.data, &g_thread_frame_arena);
+					if(data.data)
+					{
+						int index = str_find_from_left_fast(data.data, data.bytes_read, file_content_str.data, file_content_str.len);
+						if(index == -1)
+						{
+							g_thread_frame_arena.pop();
+							continue;
+						}
+					}
+					g_thread_frame_arena.pop();
+				}
+
+				in->add(fws);
+			}
+		}
+
+		{
+			// m_timed_block("Sort files");
+			qsort(in->elements, in->count, sizeof(*in->elements), qsort_files);
+		}
+	}
 }
