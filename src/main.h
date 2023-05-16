@@ -121,7 +121,7 @@ DWORD system_call(void* param);
 func void show_window();
 func void hide_window();
 func u64 get_cycles();
-
+func WPARAM remap_key_if_necessary(WPARAM vk, LPARAM lparam);
 
 template <typename T>
 struct s_dynamic_array

@@ -641,7 +641,7 @@ LRESULT window_proc(HWND window, UINT msg, WPARAM wparam, LPARAM lparam)
 		case WM_KEYDOWN:
 		case WM_KEYUP:
 		{
-			int key = (int)wparam;
+			int key = (int)remap_key_if_necessary(wparam, lparam);
 			b8 is_down = !(bool)((HIWORD(lparam) >> 15) & 1);
 			if(key < c_max_keys)
 			{
@@ -1009,4 +1009,37 @@ func u64 get_cycles()
 func f64 get_ms()
 {
 	return get_cycles() * 1000.0 / cycle_frequency;
+}
+
+// @Note(tkap, 16/05/2023): https://stackoverflow.com/a/15977613
+func WPARAM remap_key_if_necessary(WPARAM vk, LPARAM lparam)
+{
+	WPARAM new_vk = vk;
+	UINT scancode = (lparam & 0x00ff0000) >> 16;
+	int extended  = (lparam & 0x01000000) != 0;
+
+	switch(vk)
+	{
+		case VK_SHIFT:
+		{
+			new_vk = MapVirtualKey(scancode, MAPVK_VSC_TO_VK_EX);
+		} break;
+
+		case VK_CONTROL:
+		{
+			new_vk = extended ? VK_RCONTROL : VK_LCONTROL;
+		} break;
+
+		case VK_MENU:
+		{
+			new_vk = extended ? VK_RMENU : VK_LMENU;
+		} break;
+
+		default:
+		{
+			new_vk = vk;
+		} break;
+	}
+
+	return new_vk;
 }
