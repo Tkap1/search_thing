@@ -109,3 +109,5 @@ global constexpr char* c_extension_whitelist[] = {
 	".funcs",
 	".globals",
 };
+
+global constexpr char* vscode_path = "C:/Program Files/Microsoft VS Code/Code.exe";

@@ -378,7 +378,7 @@ func int ui_get_layer_level()
 }
 
 template <int max_chars>
-func e_string_input_result handle_string_input(s_input_str<max_chars>* input)
+func e_string_input_result handle_string_input(s_input_str<max_chars>* input, b8* was_edited)
 {
 	e_string_input_result result = e_string_input_result_none;
 	if(input->cursor == -1)
@@ -413,6 +413,7 @@ func e_string_input_result handle_string_input(s_input_str<max_chars>* input)
 				int num_chars_right = input->len - input->cursor;
 				if(num_chars_right > 0)
 				{
+					if(was_edited) { *was_edited = true; }
 					memmove(&input->data[input->cursor], &input->data[input->cursor + 1], num_chars_right);
 					input->data[--input->len] = 0;
 				}
@@ -421,6 +422,7 @@ func e_string_input_result handle_string_input(s_input_str<max_chars>* input)
 			{
 				if(input->len > 0)
 				{
+					if(was_edited) { *was_edited = true; }
 					result = e_string_input_result_clear;
 				}
 				else
@@ -454,6 +456,7 @@ func e_string_input_result handle_string_input(s_input_str<max_chars>* input)
 				{
 					if(input->cursor > 0)
 					{
+						if(was_edited) { *was_edited = true; }
 						input->cursor--;
 						int to_copy = input->len - input->cursor;
 						memmove(&input->data[input->cursor], &input->data[input->cursor + 1], to_copy);
@@ -462,6 +465,7 @@ func e_string_input_result handle_string_input(s_input_str<max_chars>* input)
 				}
 				else
 				{
+					if(was_edited) { *was_edited = true; }
 					int num_chars_right = input->len - input->cursor;
 					if(num_chars_right > 0)
 					{

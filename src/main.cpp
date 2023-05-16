@@ -305,6 +305,7 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 
 	auto file_name_str = make_input_str<MAX_PATH - 1>();
 	auto file_path_str = make_input_str<MAX_PATH - 1>();
+	auto file_content_str = make_input_str<MAX_PATH - 1>();
 	file_path_str.from_cstr("C:/Users/34687/Desktop/Dev");
 	int selected = 0;
 
@@ -357,13 +358,9 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		app update start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 		{
 
-			char file_name_before_edit[MAX_PATH] = zero;
-			char file_path_before_edit[MAX_PATH] = zero;
-			static_assert(MAX_PATH >= sizeof(file_name_str.data));
-			strcpy(file_name_before_edit, file_name_str.data);
-			strcpy(file_path_before_edit, file_path_str.data);
 			e_string_input_result file_name_input_result = zero;
 			e_string_input_result file_path_input_result = zero;
+			e_string_input_result file_content_input_result = zero;
 
 			if(is_key_pressed(key_tab))
 			{
@@ -377,20 +374,26 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 				}
 			}
 
+			b8 file_name_search_changed = false;
+			b8 file_path_search_changed = false;
+			b8 file_content_search_changed = false;
 			switch(search_type)
 			{
 				case e_search_type_file_name:
 				{
-					file_name_input_result = handle_string_input(&file_name_str);
+					file_name_input_result = handle_string_input(&file_name_str, &file_name_search_changed);
 				} break;
 
 				case e_search_type_file_path:
 				{
-					file_path_input_result = handle_string_input(&file_path_str);
+					file_path_input_result = handle_string_input(&file_path_str, &file_path_search_changed);
+				} break;
+
+				case e_search_type_file_content:
+				{
+					file_content_input_result = handle_string_input(&file_content_str, &file_content_search_changed);
 				} break;
 			}
-			b8 file_name_search_changed = strcmp(file_name_before_edit, file_name_str.data) != 0;
-			b8 file_path_search_changed = strcmp(file_path_before_edit, file_path_str.data) != 0;
 
 			if(file_name_input_result == e_string_input_result_cancel)
 			{
@@ -423,6 +426,7 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 							if(file_name_str.len > 0)
 							{
 								fws.score = string_similarity(file_name_str.data, file.name.cstr());
+								if(fws.score <= 0) { continue; }
 							}
 							sorted_files.add(fws);
 						}
@@ -443,24 +447,26 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 			float panel_top = pos.y - size.y / 2 + font_size;
 			float panel_bottom = pos.y + size.y / 2;
 
-			s_v2 search_pos = pos - size / 2 + v2(4, 0);
+			s_v2 search_pos = pos - size / 2;
 
-			draw_rect(pos - size / 2, 1, v2(size.x, font_size), darker(rgb(0x6B4738), 1.2f), {.origin_offset = c_origin_topleft});
-			draw_search_bar(file_name_str, search_pos, font_type, search_type == e_search_type_file_name);
+			draw_search_bar(file_name_str, search_pos, size, font_type, search_type == e_search_type_file_name);
 			search_pos.y += font_size;
-			draw_rect(pos - size / 2 + v2(0.0f, font_size), 1, v2(size.x, font_size), darker(rgb(0x6B4738), 1.2f), {.origin_offset = c_origin_topleft});
-			draw_search_bar(file_path_str, search_pos, font_type, search_type == e_search_type_file_path);
+			draw_search_bar(file_path_str, search_pos, size, font_type, search_type == e_search_type_file_path);
+			search_pos.y += font_size;
+			draw_search_bar(file_content_str, search_pos, size, font_type, search_type == e_search_type_file_content);
+
+			search_pos.x += 4;
 
 			if(is_key_pressed(key_down))
 			{
-				selected = circular_index(selected + 1, files.count);
+				selected = circular_index(selected + 1, sorted_files.count);
 			}
 			if(is_key_pressed(key_up))
 			{
-				selected = circular_index(selected - 1, files.count);
+				selected = circular_index(selected - 1, sorted_files.count);
 			}
 
-			float bottom_of_selected = panel_top + selected * font_size + font_size * 2;
+			float bottom_of_selected = panel_top + selected * font_size + font_size * 3;
 			float diff = bottom_of_selected - panel_bottom;
 			int scroll = 0;
 			if(diff > 0)
@@ -471,7 +477,7 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 			s_v2 scroll_v = v2(0.0f, scroll * font_size);
 
 			draw_text(
-				format_text("%i", files.count), pos - v2(0.0f, size.y / 2 + font_size), 2, rgb(0xFFFFFF), font_type, true
+				format_text("%i", sorted_files.count), pos - v2(0.0f, size.y / 2 + font_size), 2, rgb(0xFFFFFF), font_type, true
 			);
 
 			if(sorted_files.elements)
@@ -490,7 +496,7 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 						{
 							hide_window();
 							s_thread thread;
-							thread_str.from_cstr(format_text("\"%s\"", fws.info.full_path.cstr()));
+							thread_str.from_cstr(format_text("\"\"%s\" \"%s\"\"", vscode_path, fws.info.full_path.cstr()));
 							thread.init(system_call);
 						}
 					}
@@ -499,14 +505,14 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 
 					draw_text(
 						fws.info.name.cstr(), search_pos - scroll_v, 2, color, font_type, false,
-						{.do_clip = true, .clip_pos = pos - size / 2 + v2(0.0f, font_size * 2), .clip_size = size - v2(0.0f, font_size * 2)}
+						{.do_clip = true, .clip_pos = pos - size / 2 + v2(0.0f, font_size * 3), .clip_size = size - v2(0.0f, font_size * 3)}
 					);
 					s_v2 name_size = get_text_size(fws.info.name.cstr(), font_type);
 					s_v2 path_pos = search_pos;
 					path_pos.x += name_size.x + 20;
 					draw_text(
 						format_text("- %s", fws.info.full_path.cstr()), path_pos - scroll_v, 2, rgb(0xADB984), font_type, false,
-						{.do_clip = true, .clip_pos = pos - size / 2 + v2(0.0f, font_size * 2), .clip_size = size - v2(0.0f, font_size * 2)}
+						{.do_clip = true, .clip_pos = pos - size / 2 + v2(0.0f, font_size * 3), .clip_size = size - v2(0.0f, font_size * 3)}
 					);
 				}
 			}
@@ -886,18 +892,27 @@ func int string_similarity(char* needle, char* haystack)
 	int needle_len = (int)strlen(needle);
 	int haystack_len = (int)strlen(haystack);
 
+	if(needle_len <= 0) { return 0; }
+	if(haystack_len <= 0) { return 0; }
+
 	int score = 0;
 	int sequence_bonus = 0;
 	int needle_index = 0;
 	int haystack_index = 0;
+	int matches = 0;
+
+	// @Note(tkap, 16/05/2023): Bonus if first character matches
+	if(tolower(needle[0] == tolower(haystack[0]))) { score += 1; }
+
 	while(needle_index < needle_len)
 	{
-		char needle_c = needle[needle_index];
+		char needle_c = (char)tolower(needle[needle_index]);
 		while(haystack_index < haystack_len)
 		{
-			char haystack_c = haystack[haystack_index];
+			char haystack_c = (char)tolower(haystack[haystack_index]);
 			if(needle_c == haystack_c)
 			{
+				matches += 1;
 				score += 2 + sequence_bonus;
 				sequence_bonus += 7;
 				needle_index += 1;
@@ -913,16 +928,26 @@ func int string_similarity(char* needle, char* haystack)
 		}
 		if(haystack_index >= haystack_len) { break; }
 	}
+
+	assert(matches <= needle_len);
+
 	if(needle_index >= needle_len && haystack_index < haystack_len)
 	{
 		score -= haystack_len - needle_len;
 	}
 
+	if(matches == needle_len) { score = at_least(1, score); }
+	else if(matches != needle_len) { score = 0; }
+
 	return score;
 }
 
-func void draw_search_bar(s_input_str<MAX_PATH - 1> search, s_v2 pos, e_font font_type, b8 do_cursor)
+func void draw_search_bar(s_input_str<MAX_PATH - 1> search, s_v2 pos, s_v2 size, e_font font_type, b8 do_cursor)
 {
+	float font_size = g_font_arr[font_type].size;
+	draw_rect(pos, 1, v2(size.x, font_size), darker(rgb(0x6B4738), 1.2f), {.origin_offset = c_origin_topleft});
+	pos.x += 4;
+
 	if(search.len > 0)
 	{
 		draw_text(search.data, pos, 2, rgb(0xCBA678), font_type, false);
@@ -954,9 +979,6 @@ DWORD WINAPI system_call(void* param)
 func void show_window()
 {
 	g_window_shown = true;
-	// ShowWindow(window, SW_SHOW);
-	// SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-	// SetForegroundWindow(window);
 
 	// @Note(tkap, 14/05/2023): https://stackoverflow.com/a/34414846
 	HWND hCurWnd = GetForegroundWindow();

@@ -3,6 +3,7 @@ enum e_search_type
 {
 	e_search_type_file_name,
 	e_search_type_file_path,
+	e_search_type_file_content,
 	e_search_type_count,
 };
 
@@ -115,7 +116,7 @@ func s_texture load_texture_from_file(char* path, u32 filtering);
 func s_char_event get_char_event();
 func s_v2 get_text_size_with_count(char* text, e_font font_id, int count);
 func int string_similarity(char* a, char* b);
-func void draw_search_bar(s_input_str<MAX_PATH - 1> search, s_v2 pos, e_font font_type, b8 do_cursor);
+func void draw_search_bar(s_input_str<MAX_PATH - 1> search, s_v2 pos, s_v2 size, e_font font_type, b8 do_cursor);
 DWORD system_call(void* param);
 func void show_window();
 func void hide_window();
