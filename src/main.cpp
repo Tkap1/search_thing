@@ -838,7 +838,13 @@ func s_font load_font(char* path, float font_size, s_lin_arena* arena)
 		glyph->uv_max.x = (current_x + glyph->width) / (float)total_width;
 
 		glyph->uv_min.y = padding / (float)total_height;
-		glyph->uv_max.y = (padding + glyph->height) / (float)total_height;
+
+		// @Note(tkap, 17/05/2023): For some reason uv_max.y is off by 1 pixel (checked the texture in renderoc), which causes the text to be slightly miss-positioned
+		// in the Y axis. "glyph->height - 1" fixes it.
+		glyph->uv_max.y = (padding + glyph->height - 1) / (float)total_height;
+
+		// @Note(tkap, 17/05/2023): Otherwise the line above makes the text be cut off at the bottom by 1 pixel...
+		glyph->uv_max.y += 0.01f;
 
 		current_x += glyph->width + padding;
 	}

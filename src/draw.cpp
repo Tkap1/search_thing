@@ -47,11 +47,12 @@ func void draw_text(char* text, s_v2 in_pos, int layer, s_v4 color, e_font font_
 
 		s_glyph glyph = font->glyph_arr[c];
 		s_v2 glyph_pos = pos;
-		glyph_pos.y -= glyph.y0 * font->scale;
+		glyph_pos.y += -glyph.y0 * font->scale;
 
 		t.use_texture = true;
 		t.pos = glyph_pos;
-		t.draw_size = v2(glyph.width, glyph.height);
+		t.draw_size = v2((glyph.x1 - glyph.x0) * font->scale, (glyph.y1 - glyph.y0) * font->scale);
+		// t.draw_size = v2(glyph.width, glyph.height);
 		t.color = color;
 		// t.texture_size = texture.size;
 		t.uv_min = glyph.uv_min;
