@@ -430,7 +430,6 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 			if(file_path_search_changed)
 			{
 				// m_timed_block("Get all files");
-				printf("get all\n");
 				add_func_to_queue(e_func_get_all_files_in_directory);
 				// files = get_all_files_in_directory(file_path_str.data);
 				file_name_search_changed = true;
@@ -444,7 +443,6 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 			if(file_name_search_changed)
 			{
 				selected = 0;
-				printf("sort\n");
 				add_func_to_queue(e_func_sort_and_filter_files);
 			}
 
@@ -1090,7 +1088,6 @@ DWORD handle_work_queue(void* param)
 				{
 					case e_func_get_all_files_in_directory:
 					{
-						printf("getting all files!\n");
 						if(files.elements)
 						{
 							files.free();
@@ -1102,7 +1099,6 @@ DWORD handle_work_queue(void* param)
 					{
 						mutex.lock();
 						thread_sorted_files = false;
-						printf("sorting BAAAAAT!\n");
 						sort_and_filter_files(&thread_land_sorted_files);
 						thread_sorted_files = true;
 						mutex.unlock();
@@ -1112,8 +1108,6 @@ DWORD handle_work_queue(void* param)
 				}
 			}
 		}
-		// printf("ATHANO!\n");
-		// files = get_all_files_in_directory(file_path_str.data);
 		g_thread_frame_arena.used = 0;
 		Sleep(1);
 	}
@@ -1136,6 +1130,7 @@ func void add_func_to_queue(e_func id)
 
 func void sort_and_filter_files(s_dynamic_array<s_file_with_score>* in)
 {
+	m_timed_block("YEET");
 	if(in->elements)
 	{
 		// m_timed_block("Free sorted files");
@@ -1149,20 +1144,42 @@ func void sort_and_filter_files(s_dynamic_array<s_file_with_score>* in)
 		assert(files.capacity >= files.count);
 		{
 			// m_timed_block("Calculate file score");
-			foreach_raw(file_i, file, files)
+			foreach(file_i, file, files)
 			{
 				s_file_with_score fws = zero;
-				fws.info = file;
+				fws.info = *file;
 				if(file_name_str.len > 0)
 				{
-					fws.score = string_similarity(file_name_str.data, file.name.cstr());
+					fws.score = string_similarity(file_name_str.data, file->name.cstr());
 					if(fws.score <= 0) { continue; }
 				}
 
 				if(file_content_str.len > 0)
 				{
 					g_thread_frame_arena.push();
-					s_read_file_result data = read_file(file.full_path.data, &g_thread_frame_arena);
+
+					u64 write_time = get_last_write_time(file->file_read_result.file);
+					s_read_file_result data;
+					if(write_time > file->file_read_result.last_write_time)
+					{
+						data = read_file_(file->full_path.data, &g_thread_frame_arena);
+					}
+					else
+					{
+						data = file->file_read_result;
+						data.data = (char*)g_thread_frame_arena.get(data.bytes_read + 1);
+						SetFilePointer(file->file_read_result.file, null, null, FILE_BEGIN);
+						BOOL read_result = ReadFile(file->file_read_result.file, data.data, data.file_size, &data.bytes_read, null);
+						if(read_result == 0)
+						{
+							data.data = null;
+						}
+						else
+						{
+							data.data[data.bytes_read] = 0;
+						}
+					}
+					file->file_read_result = data;
 					if(data.data)
 					{
 						int index = str_find_from_left_fast(data.data, data.bytes_read, file_content_str.data, file_content_str.len);

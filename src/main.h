@@ -25,6 +25,7 @@ struct s_file_info
 {
 	s_str_sbuilder<MAX_PATH> full_path;
 	s_str_sbuilder<MAX_PATH> name;
+	s_read_file_result file_read_result;
 };
 
 
