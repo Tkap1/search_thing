@@ -11,9 +11,9 @@ if not exist build\NUL mkdir build
 
 set files=..\src\main.cpp
 set comp=-nologo -std:c++20 -Zc:strictStrings- -W4 -wd4505 -wd4324 -wd4127 -FC -I ../../my_libs -Gm- -GR- -EHa- -Dm_app -D_CRT_SECURE_NO_WARNINGS
-set linker=user32.lib Shell32.lib Winhttp.lib ole32.lib Ws2_32.lib Gdi32.lib Opengl32.lib Shlwapi.lib -INCREMENTAL:NO
+set linker=user32.lib Shell32.lib Gdi32.lib Opengl32.lib -INCREMENTAL:NO
 
-set debug=2
+set debug=0
 if %debug%==0 (
 	set comp=%comp% -O2 -MT
 	set linker=%linker% -subsystem:windows

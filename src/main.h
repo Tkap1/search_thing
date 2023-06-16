@@ -81,8 +81,8 @@ struct s_char_event
 	int c;
 };
 
-#ifdef m_debug
 func f64 get_ms();
+#ifdef m_debug
 #define m_timed_block(name_) s_auto_timer timer___ = zero; timer___.name = name_; timer___.start = get_ms()
 
 struct s_auto_timer

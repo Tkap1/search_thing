@@ -260,7 +260,7 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 
 	set_window_size_to_monitor_size(g_window);
 
-	RegisterHotKey(g_window, 1, 0, key_f6);
+	RegisterHotKey(g_window, 1, MOD_CONTROL | MOD_SHIFT, key_z);
 
 	g_font_arr[e_font_small] = load_font("assets/consola.ttf", 24, &g_frame_arena);
 	g_font_arr[e_font_medium] = load_font("assets/consola.ttf", 36, &g_frame_arena);
@@ -299,9 +299,6 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(transforms.elements), null, GL_DYNAMIC_DRAW);
 
-	string_similarity("cfg.y", "config.py");
-	string_similarity("cfg.y", "config.h");
-
 	auto file_name_str = make_input_str<MAX_PATH - 1>();
 	auto file_path_str = make_input_str<MAX_PATH - 1>();
 	auto file_content_str = make_input_str<MAX_PATH - 1>();
@@ -325,6 +322,9 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 
 	MSG win_msg = zero;
 	b8 running = true;
+
+	f64 last_file_content_input_change_ms = 0;
+	b8 handle_content_update_when_time_is_right = false;
 
 	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		frame start start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	while(running)
@@ -410,6 +410,13 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE hInstPrev, PSTR cmdline, int 
 
 			if(file_content_search_changed)
 			{
+				handle_content_update_when_time_is_right = true;
+				last_file_content_input_change_ms = get_ms();
+			}
+
+			if(handle_content_update_when_time_is_right && get_ms() - last_file_content_input_change_ms > 250)
+			{
+				handle_content_update_when_time_is_right = false;
 				file_name_search_changed = true;
 			}
 
