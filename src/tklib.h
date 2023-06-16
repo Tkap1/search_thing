@@ -67,13 +67,15 @@ typedef s32 b32;
 #define breakable_block_(a) breakable_block__(tkinternal_condblock, a)
 #define breakable_block breakable_block_(__LINE__)
 
-#define unreferenced(thing) (void)thing
-
 #ifdef m_debug
-#define assert(cond) do { if(!(cond)) { on_failed_assert(#cond, __FILE__, __LINE__); }} while(0)
+#define assert(cond) do { if(!(cond)) { on_failed_assert(#cond, __FILE__, __LINE__); } } while(0)
 #else
 #define assert(cond)
 #endif
+
+#define check(cond) do { if(!(cond)) { on_failed_assert(#cond, __FILE__, __LINE__); } } while(0)
+
+#define unreferenced(thing) (void)thing
 
 global constexpr s64 c_max_s8 = INT8_MAX;
 global constexpr s64 c_max_s16 = INT16_MAX;
@@ -91,18 +93,9 @@ global constexpr s64 c_mb = 1024 * c_kb;
 global constexpr s64 c_gb = 1024 * c_mb;
 
 // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		function headers start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-
-template <typename T>
-[[nodiscard]]
-func T at_most(T high, T current);
-
 func char* format_text(char* text, ...);
 func void on_failed_assert(char* cond, char* file, int line);
-func b8 is_whitespace(char c);
 // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		function headers end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-typedef DWORD (*thread_proc)(void*);
 
 struct s_mutex
 {
@@ -130,6 +123,7 @@ struct s_mutex
 	}
 };
 
+
 func s_mutex make_mutex()
 {
 	s_mutex mutex = zero;
@@ -138,6 +132,7 @@ func s_mutex make_mutex()
 	return mutex;
 }
 
+typedef DWORD (*thread_proc)(void*);
 struct s_thread
 {
 	HANDLE thread;
@@ -157,6 +152,7 @@ struct s_thread
 	{
 		assert(thread);
 		BOOL result = TerminateThread(thread, 0);
+		unreferenced(result);
 		assert(result);
 	}
 };
@@ -174,10 +170,10 @@ constexpr func s_v2 v2(T x, T y)
 	return {(float)x, (float)y};
 }
 
-template <typename t1, typename t2>
-constexpr func s_v2 v2(t1 a, t2 b)
+template <typename T>
+constexpr func s_v2 v2(T v)
 {
-	return {(float)a, (float)b};
+	return {(float)v, (float)v};
 }
 
 func float v2_angle(s_v2 v)
@@ -368,6 +364,12 @@ struct s_sarray
 		return (*this)[index];
 	}
 
+	T pop()
+	{
+		assert(count > 0);
+		return elements[--count];
+	}
+
 	constexpr void remove_and_swap(int index)
 	{
 		assert(index >= 0);
@@ -489,20 +491,164 @@ struct s_sarray
 		return count >= N;
 	}
 
-	constexpr T pop()
-	{
-		assert(count > 0);
-		T element = elements[count - 1];
-		count -= 1;
-		return element;
-	}
-
-	constexpr b8 is_empty()
+	b8 is_empty()
 	{
 		return count <= 0;
 	}
 
 };
+
+template <typename T>
+struct s_darray
+{
+	int max_elements;
+	int count = 0;
+	T* elements;
+
+	constexpr T& operator[](int index)
+	{
+		assert(index >= 0);
+		assert(index < count);
+		return elements[index];
+	}
+
+	constexpr T get(int index)
+	{
+		return (*this)[index];
+	}
+
+	T pop()
+	{
+		assert(count > 0);
+		return elements[--count];
+	}
+
+	constexpr void remove_and_swap(int index)
+	{
+		assert(index >= 0);
+		assert(index < count);
+		count -= 1;
+		elements[index] = elements[count];
+	}
+
+	constexpr T remove_and_shift(int index)
+	{
+		assert(index >= 0);
+		assert(index < count);
+		T result = elements[index];
+		count -= 1;
+
+		int to_move = count - index;
+		if(to_move > 0)
+		{
+			memcpy(elements + index, elements + index + 1, to_move * sizeof(T));
+		}
+		return result;
+	}
+
+	constexpr T* get_ptr(int index)
+	{
+		return &(*this)[index];
+	}
+
+	constexpr void swap(int index0, int index1)
+	{
+		assert(index0 >= 0);
+		assert(index1 >= 0);
+		assert(index0 < count);
+		assert(index1 < count);
+		assert(index0 != index1);
+		T temp = elements[index0];
+		elements[index0] = elements[index1];
+		elements[index1] = temp;
+	}
+
+	constexpr T get_random(s_random* rng)
+	{
+		assert(count > 0);
+		int index = rng->randu() % count;
+		return elements[index];
+	}
+
+	constexpr T get_last()
+	{
+		assert(count > 0);
+		return elements[count - 1];
+	}
+
+	constexpr T* get_last_ptr()
+	{
+		assert(count > 0);
+		return &elements[count - 1];
+	}
+
+	constexpr int add(T element)
+	{
+		assert(count < max_elements);
+		elements[count] = element;
+		count += 1;
+		return count - 1;
+	}
+
+	constexpr b8 add_checked(T element)
+	{
+		if(count < max_elements)
+		{
+			add(element);
+			return true;
+		}
+		return false;
+	}
+
+	constexpr b8 contains(T what)
+	{
+		for(int element_i = 0; element_i < count; element_i++)
+		{
+			if(what == elements[element_i])
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	constexpr void insert(int index, T element)
+	{
+		assert(index >= 0);
+		assert(index < max_elements);
+		assert(index <= count);
+
+		int to_move = count - index;
+		count += 1;
+		if(to_move > 0)
+		{
+			memmove(&elements[index + 1], &elements[index], to_move * sizeof(T));
+		}
+		elements[index] = element;
+	}
+
+	constexpr b8 is_last(int index)
+	{
+		assert(index >= 0);
+		assert(index < count);
+		return index == count - 1;
+	}
+
+	constexpr b8 is_full()
+	{
+		return count >= max_elements;
+	}
+
+	b8 is_empty()
+	{
+		return count <= 0;
+	}
+
+};
+
+struct s_lin_arena;
+template <typename T>
+func constexpr s_darray<T> make_darray(int max_elements, s_lin_arena* arena);
 
 // @Note(tkap, 24/11/2022): If we for some reason add more member variables to this struct it may be break serialization.
 // But why would we?
@@ -638,16 +784,6 @@ func float lerp(float a, float b, float t)
 	return a + (b - a) * t;
 }
 
-func s_v4 lerp_color(s_v4 a, s_v4 b, float t)
-{
-	s_v4 result;
-	result.x = lerp(a.x, b.x, t);
-	result.y = lerp(a.y, b.y, t);
-	result.z = lerp(a.z, b.z, t);
-	result.w = a.w;
-	return result;
-}
-
 func s_v2 lerp(s_v2 a, s_v2 b, float t)
 {
 	s_v2 result;
@@ -666,40 +802,26 @@ func s_v4 lerp(s_v4 a, s_v4 b, float t)
 	return result;
 }
 
+template <typename T>
+[[nodiscard]]
+func T at_most(T high, T current)
+{
+	return current > high ? high : current;
+}
+
+template <typename T>
+[[nodiscard]]
+func T at_least(T low, T current)
+{
+	return current < low ? low : current;
+}
+
 func s_v4 rand_color(s_random* rng)
 {
 	s_v4 result;
 	result.x = rng->randf32();
 	result.y = rng->randf32();
 	result.z = rng->randf32();
-	result.w = 1;
-	return result;
-}
-
-func s_v2 v2_from_angle(float angle)
-{
-	return v2(
-		cosf(angle),
-		sinf(angle)
-	);
-}
-
-func s_v4 multiply_rgb(s_v4 v4, float v)
-{
-	s_v4 result;
-	result.x = v4.x * v;
-	result.y = v4.y * v;
-	result.z = v4.z * v;
-	result.w = v4.w;
-	return result;
-}
-
-func constexpr s_v4 rgb(int hex)
-{
-	s_v4 result;
-	result.x = ((hex & 0xFF0000) >> 16) / 255.0f;
-	result.y = ((hex & 0x00FF00) >> 8) / 255.0f;
-	result.z = ((hex & 0x0000FF)) / 255.0f;
 	result.w = 1;
 	return result;
 }
@@ -726,19 +848,47 @@ func s_v4 darker(s_v4 color, float div)
 	return result;
 }
 
-template <typename T>
-[[nodiscard]]
-func T at_most(T high, T current)
+func s_v2 v2_from_angle(float angle)
 {
-	return current > high ? high : current;
+	return v2(
+		cosf(angle),
+		sinf(angle)
+	);
 }
 
-template <typename T>
-[[nodiscard]]
-func T at_least(T low, T current)
+// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		color start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+
+func s_v4 multiply_rgb(s_v4 v4, float v)
 {
-	return current < low ? low : current;
+	s_v4 result;
+	result.x = v4.x * v;
+	result.y = v4.y * v;
+	result.z = v4.z * v;
+	result.w = v4.w;
+	return result;
 }
+
+func constexpr s_v4 rgb(int hex)
+{
+	s_v4 result;
+	result.x = ((hex & 0xFF0000) >> 16) / 255.0f;
+	result.y = ((hex & 0x00FF00) >> 8) / 255.0f;
+	result.z = ((hex & 0x0000FF)) / 255.0f;
+	result.w = 1;
+	return result;
+}
+
+func s_v4 lerp_color(s_v4 a, s_v4 b, float t)
+{
+	s_v4 result;
+	result.x = lerp(a.x, b.x, t);
+	result.y = lerp(a.y, b.y, t);
+	result.z = lerp(a.z, b.z, t);
+	result.w = a.w;
+	return result;
+}
+
+// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		color end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 template <typename T>
 [[nodiscard]]
@@ -788,11 +938,11 @@ func void make_process_close_when_app_closes(HANDLE process)
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_info = zero;
 	job_info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
 	BOOL set_info_result = SetInformationJobObject(job, JobObjectExtendedLimitInformation, &job_info, sizeof(job_info));
-	unreferenced(set_info_result);
+	UNREFERENCED_PARAMETER(set_info_result);
 	assert(set_info_result);
 
 	BOOL assign_result = AssignProcessToJobObject(job, process);
-	unreferenced(assign_result);
+	UNREFERENCED_PARAMETER(assign_result);
 	assert(assign_result);
 }
 
@@ -844,7 +994,7 @@ struct s_lin_arena
 	size_t used = 0;
 	size_t capacity;
 	u8* memory = null;
-	s_sarray<size_t, 16> push_stack;
+	s_sarray<size_t, 8> push_stack;
 
 	void init(size_t in_capacity)
 	{
@@ -865,20 +1015,12 @@ struct s_lin_arena
 		return result;
 	}
 
-	void* get_clear(size_t in_wanted)
-	{
-		void* result = get(in_wanted);
-		memset(result, 0, in_wanted);
-
-		return result;
-	}
-
 	constexpr void push()
 	{
 		push_stack.add(used);
 	}
 
-	constexpr void pop()
+	void pop()
 	{
 		used = push_stack.pop();
 	}
@@ -1087,32 +1229,10 @@ struct s_str_sbuilder
 
 };
 
-
 func char* format_text(char* text, ...)
 {
-	local_persist HANDLE mutex = NULL;
-
-	if(!mutex)
-	{
-		mutex = CreateMutex(
-			NULL,              // default security attributes
-			FALSE,             // initially not owned
-			NULL);             // unnamed mutex
-
-    if (mutex == NULL)
-    {
-        printf("CreateMutex error: %d\n", GetLastError());
-        return 0;
-    }
-	}
-
-	// Wait indefinately
-	// Other results can be WAIT_ABANDONED
-	DWORD wait_result = WaitForSingleObject(mutex, INFINITE);
-	assert(wait_result == WAIT_OBJECT_0);
-
-	constexpr int max_format_text_buffers = 64;
-	constexpr int max_text_buffer_length = 4096;
+	constexpr int max_format_text_buffers = 16;
+	constexpr int max_text_buffer_length = 256;
 
 	local_persist char buffers[max_format_text_buffers][max_text_buffer_length] = zero;
 	local_persist int index = 0;
@@ -1132,24 +1252,8 @@ func char* format_text(char* text, ...)
 
 	index += 1;
 	if(index >= max_format_text_buffers) { index = 0; }
-	assert(ReleaseMutex(mutex));
 
 	return current_buffer;
-}
-
-func int str_find_from_right(char* haystack, char needle)
-{
-	int haystack_len = (int)strlen(haystack);
-
-	for(int i = 0; i < haystack_len; i--)
-	{
-		if(haystack[i] == needle)
-		{
-			return i;
-		}
-	}
-
-	return -1;
 }
 
 func int str_find_from_right(char* haystack, char* needle)
@@ -1180,10 +1284,8 @@ func int str_find_from_right(char* haystack, char* needle)
 	return -1;
 }
 
-func int str_find_from_left(char* haystack, char* needle)
+func int str_find_from_left(char* haystack, int haystack_len, char* needle, int needle_len)
 {
-	int haystack_len = (int)strlen(haystack);
-	int needle_len = (int)strlen(needle);
 	if(needle_len > haystack_len) { return -1; }
 
 	for(int haystack_i = 0; haystack_i < haystack_len - (needle_len - 1); haystack_i++)
@@ -1205,6 +1307,54 @@ func int str_find_from_left(char* haystack, char* needle)
 		}
 	}
 	return -1;
+}
+
+func int str_find_from_left(char* haystack, char* needle)
+{
+	int haystack_len = (int)strlen(haystack);
+	int needle_len = (int)strlen(needle);
+	return str_find_from_left(haystack, haystack_len, needle, needle_len);
+}
+
+func int str_find_from_left_fast(char* haystack, int haystack_len, char* needle, int needle_len)
+{
+	if(needle_len > haystack_len) { return -1; }
+
+	int haystack_index = 0;
+	char first_needle_char = needle[0];
+
+	while(haystack_index < haystack_len)
+	{
+		char haystack_c = haystack[haystack_index];
+		if(haystack_c == first_needle_char)
+		{
+			b8 matches_all = true;
+			int possible_result = haystack_index;
+			haystack_index += needle_len - 1;
+			int haystack_subindex = haystack_index;
+			for(int needle_i = 0; needle_i < needle_len; needle_i++)
+			{
+				char needle_c = needle[needle_len - needle_i - 1];
+				haystack_c = haystack[haystack_subindex];
+				if(needle_c != haystack_c)
+				{
+					matches_all = false;
+					break;
+				}
+				haystack_subindex -= 1;
+			}
+			if(matches_all) { return possible_result; }
+		}
+		haystack_index += 1;
+	}
+	return -1;
+}
+
+func int str_find_from_left_fast(char* haystack, char* needle)
+{
+	int haystack_len = (int)strlen(haystack);
+	int needle_len = (int)strlen(needle);
+	return str_find_from_left_fast(haystack, haystack_len, needle, needle_len);
 }
 
 // @Note(tkap, 11/03/2023): Don't pass in a read-only string here!
@@ -1245,25 +1395,8 @@ func wchar_t* str_to_wide(char* str, s_lin_arena* arena)
 		result,
 		buffer_size
 	);
+	unreferenced(characters_written);
 	assert(characters_written > 0);
-	return result;
-}
-
-// @Note(tkap, 04/05/2023): Returns how many whitespace characters were removed
-func int str_trim_from_right(char* str)
-{
-	int result = 0;
-	int len = (int)strlen(str);
-	assert(len > 0);
-	for(int i = len - 1; i >= 0; i--)
-	{
-		if(is_whitespace(str[i]))
-		{
-			str[i] = 0;
-			result += 1;
-		}
-		else { break; }
-	}
 	return result;
 }
 
@@ -1277,8 +1410,20 @@ struct s_read_file_result
 	int file_size;
 	DWORD bytes_read;
 	HANDLE file;
+	u64 last_write_time;
 	char* data;
 };
+
+// @TODO(tkap, 16/05/2023): Profile this vs GetFileAttributes
+func u64 get_last_write_time(HANDLE handle)
+{
+	FILETIME time;
+	GetFileTime(handle, null, null, &time);
+	LARGE_INTEGER temp;
+	temp.LowPart = time.dwLowDateTime;
+	temp.HighPart = time.dwHighDateTime;
+	return temp.QuadPart;
+}
 
 func s_read_file_result read_file(char* path, s_lin_arena* arena)
 {
@@ -1288,6 +1433,30 @@ func s_read_file_result read_file(char* path, s_lin_arena* arena)
 
 	result.file_size = GetFileSize(result.file, null);
 	result.data = (char*)arena->get(result.file_size + 1);
+
+	BOOL read_result = ReadFile(result.file, result.data, result.file_size, &result.bytes_read, null);
+	if(read_result == 0)
+	{
+		result.data = null;
+	}
+	else
+	{
+		result.success = true;
+		result.data[result.bytes_read] = 0;
+	}
+	return result;
+}
+
+func s_read_file_result read_file_(char* path, s_lin_arena* arena)
+{
+	s_read_file_result result = zero;
+	result.file = CreateFile(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, null);
+	if(result.file == INVALID_HANDLE_VALUE) { return result; }
+
+	result.file_size = GetFileSize(result.file, null);
+	result.data = (char*)arena->get(result.file_size + 1);
+
+	result.last_write_time = get_last_write_time(result.file);
 
 	BOOL read_result = ReadFile(result.file, result.data, result.file_size, &result.bytes_read, null);
 	if(read_result == 0)
@@ -1805,87 +1974,64 @@ func void print_win32_error()
 	}
 }
 
-char* c_base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-bool is_base64(char c)
+func b8 point_in_rect_topleft(s_v2 point, s_v2 pos, s_v2 size)
 {
-  return (isalnum(c) || (c == '+') || (c == '/'));
+	return point.x >= pos.x && point.x <= pos.x + size.x && point.y >= pos.y && point.y <= pos.y + size.y;
 }
 
-char* base64_decode(char* encoded_string, int length, s_lin_arena* arena)
+
+template <typename T>
+func constexpr s_darray<T> make_darray(int max_elements, s_lin_arena* arena)
 {
-  int i = 0;
-  int j = 0;
-  int in_ = 0;
-  unsigned char char_array_4[4], char_array_3[3];
-
-	int ret_len = 0;
-	int ret_buffer_len = length * 5;
-  char* ret = (char*)arena->get_clear(ret_buffer_len);
-
-  while (length-- && ( encoded_string[in_] != '=') && is_base64(encoded_string[in_])) {
-    char_array_4[i++] = encoded_string[in_]; in_++;
-    if (i ==4) {
-      for (i = 0; i <4; i++)
-        char_array_4[i] = (unsigned char)str_find_from_right(c_base64_chars, char_array_4[i]);
-
-      char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
-      char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
-      char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
-
-      for (i = 0; (i < 3); i++)
-        ret[ret_len++] = char_array_3[i];
-      i = 0;
-    }
-  }
-
-  if (i) {
-    for (j = i; j <4; j++)
-      char_array_4[j] = 0;
-
-    for (j = 0; j <4; j++)
-      char_array_4[j] = (unsigned char)str_find_from_right(c_base64_chars, char_array_4[i]);
-
-    char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
-    char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
-    char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
-
-    for (j = 0; (j < i - 1); j++) ret[ret_len++] = char_array_3[j];
-  }
-
-	assert(ret_len < ret_buffer_len);
-
-  return ret;
+	s_darray<T> array = zero;
+	array.max_elements = max_elements;
+	assert(max_elements > 0);
+	array.elements = (T*)arena->get(sizeof(T) * max_elements);
+	return array;
 }
 
-#include <string>
-#include <vector>
-static std::string base64_decode(char* encoded_string, int str_len)
+template <typename T, int N>
+func void bubble_sort_array(s_sarray<T, N>* arr)
 {
-	std::string out;
-
-	std::vector<int> T(256,-1);
-	for (int i=0; i<64; i++) T["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[i]] = i;
-
-	int val=0, valb=-8;
-	for (int char_idx = 0; char_idx < str_len; char_idx++)
+	for(int i = 0; i < arr->count; i++)
 	{
-		unsigned char c = encoded_string[char_idx];
-
-		if (T[c] == -1)
+		b8 swaps = false;
+		for(int j = 0; j < arr->count - 1; j++)
 		{
-			break;
+			auto a = arr->get_ptr(j);
+			auto b = arr->get_ptr(j + 1);
+			if(*a > *b)
+			{
+				swaps = true;
+				auto temp = *a;
+				*a = *b;
+				*b = temp;
+			}
 		}
-
-		val = (val << 6) + T[c];
-		valb += 6;
-		if (valb >= 0)
-		{
-			out.push_back(char((val>>valb)&0xFF));
-			valb -= 8;
-		}
+		if(!swaps) { break; }
 	}
-	return out;
+}
+
+template <typename T>
+func void bubble_sort_array(s_darray<T>* arr)
+{
+	for(int i = 0; i < arr->count; i++)
+	{
+		b8 swaps = false;
+		for(int j = 0; j < arr->count - 1; j++)
+		{
+			auto a = arr->get_ptr(j);
+			auto b = arr->get_ptr(j + 1);
+			if(*a > *b)
+			{
+				swaps = true;
+				auto temp = *a;
+				*a = *b;
+				*b = temp;
+			}
+		}
+		if(!swaps) { break; }
+	}
 }
 
 func int ceilfi(float f)
